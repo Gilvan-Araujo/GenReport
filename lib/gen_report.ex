@@ -38,6 +38,7 @@ defmodule GenReport do
   ]
 
   def build(file_name) do
+    # execution time: 210141ms
     file_name
     |> Parser.parse_file()
     |> Enum.reduce(empty_report(), fn line, report -> sum_hours(line, report) end)
@@ -45,6 +46,17 @@ defmodule GenReport do
 
   def build() do
     {:error, "Insira o nome de um arquivo"}
+  end
+
+  def build_parallel(filenames) when not is_list(filenames) do
+    {:error, "Please provide a filename list!"}
+  end
+
+  def build_parallel(filenames) do
+    # execution time: 51985
+    filenames
+    |> Task.async_stream(&build/1)
+    |> Enum.reduce(empty_report(), fn {:ok, result}, report -> sum_reports(report, result) end)
   end
 
   defp sum_hours(
@@ -73,6 +85,37 @@ defmodule GenReport do
         "hours_per_month" => hours_per_month,
         "hours_per_year" => hours_per_year
     }
+  end
+
+  defp sum_reports(
+         %{
+           "all_hours" => all_hours1,
+           "hours_per_month" => hours_per_month1,
+           "hours_per_year" => hours_per_year1
+         },
+         %{
+           "all_hours" => all_hours2,
+           "hours_per_month" => hours_per_month2,
+           "hours_per_year" => hours_per_year2
+         }
+       ) do
+    all_hours = merge_maps(all_hours1, all_hours2)
+    hours_per_month = merge_maps_within_maps(hours_per_month1, hours_per_month2)
+    hours_per_year = merge_maps_within_maps(hours_per_year1, hours_per_year2)
+
+    %{
+      "all_hours" => all_hours,
+      "hours_per_month" => hours_per_month,
+      "hours_per_year" => hours_per_year
+    }
+  end
+
+  defp merge_maps(map1, map2) do
+    Map.merge(map1, map2, fn _key, value1, value2 -> value1 + value2 end)
+  end
+
+  defp merge_maps_within_maps(map1, map2) do
+    Map.merge(map1, map2, fn key, _value1, _value2 -> merge_maps(map1[key], map2[key]) end)
   end
 
   defp empty_months, do: Enum.into(@months, %{}, &{&1, 0})
